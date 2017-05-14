@@ -1355,6 +1355,32 @@ exit:
 	return touch_count;
 }
 
+/* The panel of my device would generate random events after 10 seconds of idle ... */
+__attribute__((unused))
+static bool synaptics_noise_workaround_should_report(struct synaptics_rmi4_data *rmi4_data)
+{
+	// Dirty ...
+	static const ktime_t KTIME_UNSET = { .tv64 = -1 };
+	static ktime_t workaround_last = {-1}, workaround_skip = {-1};
+	ktime_t now = ktime_get();
+	if (ktime_compare(workaround_skip, KTIME_UNSET) != 0) {
+		if (ktime_to_ms(ktime_sub(now, workaround_skip)) > 300) {
+			workaround_skip = KTIME_UNSET;
+			dev_dbg(rmi4_data->pdev->dev.parent, "Exiting noise sequence.");
+		} else {
+			workaround_skip = now;
+			dev_dbg(rmi4_data->pdev->dev.parent, "Not reporting (in the noise sequence)");
+			return false;
+		}
+	} else if (ktime_compare(workaround_last, KTIME_UNSET) != 0 && ktime_to_ms(ktime_sub(now, workaround_last)) > 10000) {
+		workaround_skip = now;
+		dev_dbg(rmi4_data->pdev->dev.parent, "Not reporting (entering noise sequence)");
+		return false;
+	}
+	workaround_last = now;
+	return true;
+}
+
 static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
@@ -1476,6 +1502,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			return 0;
 	}
 #endif
+
+	if (!synaptics_noise_workaround_should_report(rmi4_data))
+		return 0;
 
 	mutex_lock(&(rmi4_data->rmi4_report_mutex));
 
