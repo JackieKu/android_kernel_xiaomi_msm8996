@@ -18,6 +18,8 @@
  * GNU General Public License for more details.
  */
 
+//#define DEBUG 1
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
@@ -161,6 +163,7 @@ static void synaptics_key_ctrl(struct synaptics_rmi4_data *rmi4_data, bool enabl
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #ifndef CONFIG_FB
 #define USE_EARLYSUSPEND
+#error USE_EARLYSUSPEND
 #endif
 #endif
 
@@ -754,6 +757,7 @@ static void synaptics_secure_touch_stop(
 #endif
 
 #if defined(CONFIG_SECURE_TOUCH)
+#error SECURE_TOUCH
 static ssize_t synaptics_secure_touch_enable_show(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
@@ -1819,7 +1823,11 @@ static void synaptics_rmi4_sensor_report(struct synaptics_rmi4_data *rmi4_data,
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
 	struct synaptics_rmi4_device_info *rmi;
 
-	rmi = &(rmi4_data->rmi4_mod_info);
+	dev_dbg(rmi4_data->pdev->dev.parent,
+        "%s: report: %d",
+        __func__, (int)report);
+
+    rmi = &(rmi4_data->rmi4_mod_info);
 
 	/*
 	 * Get interrupt status information from F01 Data1 register to
@@ -1966,6 +1974,11 @@ static int synaptics_rmi4_irq_enable(struct synaptics_rmi4_data *rmi4_data,
 	int retval = 0;
 	const struct synaptics_dsx_board_data *bdata =
 			rmi4_data->hw_if->board_data;
+
+	dev_dbg(rmi4_data->pdev->dev.parent,
+            "%s enable:%d attn_only:%d",
+            __func__,
+            (int)enable, (int)attn_only);
 
 	if (attn_only) {
 		retval = synaptics_rmi4_int_enable(rmi4_data, enable);
@@ -3730,6 +3743,9 @@ static void synaptics_rmi4_switch_mode_work(struct work_struct *work)
 	const struct synaptics_dsx_board_data *bdata = rmi4_data->hw_if->board_data;
 	unsigned char value = ms->mode;
 
+    dev_dbg(rmi4_data->pdev->dev.parent,
+            "%s value:%d", __func__, (int)value);
+
 	if (value >= INPUT_EVENT_WAKUP_MODE_OFF && value <= INPUT_EVENT_WAKUP_MODE_ON) {
 		if (bdata->cut_off_power) {
 			dev_err(rmi4_data->pdev->dev.parent,
@@ -5178,6 +5194,10 @@ static int synaptics_rmi4_fb_notifier_cb(struct notifier_block *self,
 	else
 		return 0;
 
+    dev_dbg(rmi4_data->pdev->dev.parent,
+            "%s: event: %02x",
+            __func__, (unsigned)event);
+
 	/* Receive notifications from primary panel only */
 	if (evdata && evdata->data && rmi4_data && mdss_panel_is_prim(evdata->info)) {
 		transition = evdata->data;
@@ -5362,6 +5382,8 @@ static int synaptics_rmi4_suspend(struct device *dev)
 	const struct synaptics_dsx_board_data *bdata =
 		rmi4_data->hw_if->board_data;
 
+    dev_dbg(dev, "%s", __func__);
+
 	if (rmi4_data->stay_awake || rmi4_data->suspend)
 		return 0;
 
@@ -5435,6 +5457,8 @@ static int synaptics_rmi4_resume(struct device *dev)
 	}
 #endif
 
+    dev_dbg(dev, "%s", __func__);
+
 	if (rmi4_data->stay_awake || !rmi4_data->suspend)
 		return 0;
 
@@ -5505,6 +5529,8 @@ static int synaptics_rmi4_pm_suspend(struct device *dev)
 	const struct synaptics_dsx_board_data *bdata =
 		rmi4_data->hw_if->board_data;
 
+    dev_dbg(dev, "%s", __func__);
+
 	if (device_may_wakeup(dev) &&
 			rmi4_data->enable_wakeup_gesture &&
 			!bdata->cut_off_power) {
@@ -5523,6 +5549,8 @@ static int synaptics_rmi4_pm_resume(struct device *dev)
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	const struct synaptics_dsx_board_data *bdata =
 		rmi4_data->hw_if->board_data;
+
+    dev_dbg(dev, "%s", __func__);
 
 	if (device_may_wakeup(dev) &&
 			rmi4_data->enable_wakeup_gesture &&
