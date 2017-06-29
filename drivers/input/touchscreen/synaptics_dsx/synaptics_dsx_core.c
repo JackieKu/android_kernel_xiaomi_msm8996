@@ -1368,10 +1368,17 @@ static int synaptics_noise_workaround_should_report(struct synaptics_rmi4_data *
 	static const ktime_t KTIME_UNSET = { .tv64 = -1 };
 	static ktime_t workaround_last = {-1}, workaround_skip = {-1}, workaround_start = {-1};
 	ktime_t now = ktime_get();
+
 	if (ktime_compare(workaround_skip, KTIME_UNSET) != 0) {
-		if (ktime_to_ms(ktime_sub(now, workaround_skip)) > 300 && ktime_to_ms(ktime_sub(now, workaround_start)) > 1000) {
-			workaround_skip = KTIME_UNSET;
-			dev_dbg(rmi4_data->pdev->dev.parent, "Exiting noise sequence.");
+		if (ktime_to_ms(ktime_sub(now, workaround_skip)) > 200) {
+			if (ktime_to_ms(ktime_sub(now, workaround_start)) > 1000) {
+				workaround_skip = KTIME_UNSET;
+				dev_dbg(rmi4_data->pdev->dev.parent, "Exiting noise sequence.");
+			} else {
+				workaround_skip = now;
+				dev_dbg(rmi4_data->pdev->dev.parent, "Re-entering noise sequence.");
+				return NOISE_START;
+			}
 		} else {
 			workaround_skip = now;
 			dev_dbg(rmi4_data->pdev->dev.parent, "Not reporting (in the noise sequence)");
@@ -1383,6 +1390,7 @@ static int synaptics_noise_workaround_should_report(struct synaptics_rmi4_data *
 		dev_dbg(rmi4_data->pdev->dev.parent, "Not reporting (entering noise sequence)");
 		return NOISE_START;
 	}
+
 	workaround_last = now;
 	return NOISE_NORMAL;
 }
@@ -1419,7 +1427,8 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	/* bogus input workaround */
 	unsigned char finger_valid;
 	int bogus_status;
-	static int prev_x = -100, prev_y = -100;
+	static const int NOWHERE = -100;
+	static int prev_x = NOWHERE, prev_y = NOWHERE;
 
 	if (rmi4_data->input_dev == NULL) {
 		dev_err(rmi4_data->pdev->dev.parent, "input_dev is NULL, do not report data\n");
@@ -1542,28 +1551,46 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 
 			// workaround to detect the spurious input data.
-			if (wx + wy > 20)
-				continue;
+			{
+				#define BAD_W(t) (wx < 0 || wy < 0 || wx + wy > (t))
 
-			switch (bogus_status) {
-			case NOISE_IN_SEQ:
-				if (finger_valid > 0)
-					continue;
-				{
-					int dx = x - prev_x;
-					int dy = y - prev_y;
-					if (dx * dx + dy * dy > 400)
+				switch (bogus_status) {
+				case NOISE_IN_SEQ:
+					if (finger_valid > 0)
 						continue;
-				}
-				break;
-			case NOISE_START:
-				break;
-			default:
-				break;
-			}
-			prev_x = x;
-			prev_y = y;
 
+					if (prev_x >= 0 && prev_y >= 0) {
+						if (BAD_W(30))
+							goto bogus;
+						else {
+							int dx = x - prev_x;
+							int dy = y - prev_y;
+							if (dx * dx + dy * dy > 900)
+								goto bogus;
+						}
+					} else if (BAD_W(20))
+						continue;
+					break;
+				case NOISE_START:
+				default:
+					if (BAD_W(20)) {
+						prev_x = NOWHERE;
+						prev_y = NOWHERE;
+						continue;
+					}
+					break;
+				}
+
+				prev_x = x;
+				prev_y = y;
+				goto finish_workaround;
+
+bogus:
+				x = prev_x;
+				y = prev_y;
+				wx = wy = 5;
+			}
+finish_workaround:
 
 
 			if (rmi4_data->hw_if->board_data->swap_axes) {
