@@ -1551,7 +1551,20 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 
 			// workaround to detect the spurious input data.
-			{
+			if (likely(finger_status == F12_FINGER_STATUS)) {
+				dev_dbg(rmi4_data->pdev->dev.parent,
+						"TOUCH_WORKAROUND: Finger %d: "
+						"status = 0x%02x, "
+						"bogus_status = %d, "
+						"x = %d, "
+						"y = %d, "
+						"wx = %d, "
+						"wy = %d\n",
+						finger,
+						finger_status,
+						bogus_status,
+						x, y, wx, wy);
+
 				#define BAD_W(t) (wx < 0 || wy < 0 || wx + wy > (t))
 
 				switch (bogus_status) {
